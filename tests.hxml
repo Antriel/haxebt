@@ -1,0 +1,6 @@
+-cp src
+-cp tests
+-lib utest
+-lib tink_hxx
+-main TestsMain
+--interp

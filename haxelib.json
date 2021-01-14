@@ -1,0 +1,13 @@
+{
+  "name": "haxebt",
+  "url" : "https://github.com/antriel/haxebt/",
+  "license": "MIT",
+  "tags": [],
+  "version": "0.0.0",
+  "classPath": "src",
+  "releasenote": "initial release",
+  "contributors": ["Antriel"],
+  "dependencies": {
+    "tink_hxx" : ""
+  }
+}

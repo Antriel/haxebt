@@ -308,11 +308,11 @@ enum abstract BehaviorType(String) {
     public inline function check(count:Int, name:StringAt) {
         switch (cast this:BehaviorType) {
             case Action if (count != 0):
-                Context.error('Action ${name.value} cannot have children. Got $count.', name.pos);
+                Context.fatalError('Action ${name.value} cannot have children. Got $count.', name.pos);
             case Decorator if (count != 1):
-                Context.error('Decorator ${name.value} expects exactly 1 child. Got $count.', name.pos);
+                Context.fatalError('Decorator ${name.value} expects exactly 1 child. Got $count.', name.pos);
             case Composite if (count == 0):
-                Context.error('Composite ${name.value} expects at least 1 children. Got $count.', name.pos);
+                Context.fatalError('Composite ${name.value} expects at least 1 children. Got $count.', name.pos);
             case _:
         }
     }

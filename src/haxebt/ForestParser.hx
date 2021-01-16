@@ -16,11 +16,30 @@ class ForestParser {
 
     public static macro function build():Array<Field> {
         Context.registerModuleDependency('haxebt.ForestParser', "src/haxebt/BehaviorBuilder.hx");
-        var fields = Context.getBuildFields();
+        return new ForestParser().fields;
+    }
+
+    #if macro
+    static final parserConfig:tink.hxx.Parser.ParserConfig = {
+        defaultExtension: 'hxx',
+        noControlStructures: true,
+        defaultSwitchTarget: macro __data__,
+        isVoid: function(_) return false,
+        treatNested: function(children) {
+            Context.error('Nested? ' + children, children.pos);
+            return null;
+        }
+    }
+
+    final fields:Array<Field>;
+    var behaviors:Array<Expr> = [];
+    var configCache:Map<String, BehaviorConfig> = new Map();
+
+    function new() {
         var args = [];
         var refs = [];
-        for (f in fields) {
-            switch (f.kind) {
+        for (f in Context.getBuildFields()) {
+            switch f.kind {
                 case FVar(t, e):
                     if (e != null) {
                         refs.push({
@@ -28,7 +47,13 @@ class ForestParser {
                             name: f.name,
                             pos: f.pos
                         });
-                        createBehavior(Parser.parseRoot(e, parserConfig).value[0]);
+                        var source = ParserSource.ofExpr(e);
+                        var rgx = ~/\/\/.*$|\/\*[\S\s]*?\*\//gm; // Remove comments.
+                        var str = rgx.map(source.source.string, match -> [for (_ in 0...match.matched(0).length) " "].join(""));
+                        @:privateAccess source.source.string = str;
+                        function create(source:ParserSource):Parser @:privateAccess return new Parser(source, create, parserConfig);
+                        var nodes = create(source).parseRootNode();
+                        createBehavior(nodes.value[0]);
                     } else {
                         args.push({ name: f.name, type: t });
                     }
@@ -40,7 +65,7 @@ class ForestParser {
 
         behaviors = behaviors.map(e -> macro forest.push($e));
 
-        var newFields:Array<Field> = [
+        fields = [
             {
                 name: 'build',
                 pos: Context.currentPos(),
@@ -59,7 +84,7 @@ class ForestParser {
         ];
         var mapInitArrExpr = [];
         for (ref in refs) {
-            newFields.push({
+            fields.push({
                 name: ref.name,
                 pos: ref.pos,
                 kind: FVar(macro:haxebt.BehaviorForest.BehaviorNodeID, macro $v{ref.id}),
@@ -67,13 +92,13 @@ class ForestParser {
             });
             mapInitArrExpr.push(macro $v{ref.name.toLowerCase()} => $v{ref.id});
         }
-        newFields.push({
+        fields.push({
             name: 'treeMap',
             pos: Context.currentPos(),
             kind: FVar(macro:Map<String, haxebt.BehaviorForest.BehaviorNodeID>, macro $a{mapInitArrExpr}),
             access: [AFinal, APrivate, AStatic]
         });
-        newFields.push({
+        fields.push({
             name: 'getByName',
             pos: Context.currentPos(),
             kind: FFun({
@@ -83,30 +108,14 @@ class ForestParser {
             }),
             access: [APublic, AStatic, AInline]
         });
-
-        return newFields;
     }
 
-    #if macro
-    static var parserConfig:tink.hxx.Parser.ParserConfig = {
-        defaultExtension: 'hxx',
-        noControlStructures: true,
-        defaultSwitchTarget: macro __data__,
-        isVoid: function(_) return false,
-        treatNested: function(children) {
-            Context.error('Nested? ' + children, children.pos);
-            return null;
-        }
-    }
-
-    static var behaviors:Array<Expr> = [];
-
-    static function createBehavior(root:Child):Expr {
-        switch (root.value) {
+    function createBehavior(root:Child):Expr {
+        switch root.value {
             case CNode(node):
                 var atts = [];
                 for (att in node.attributes) {
-                    switch (att) {
+                    switch att {
                         case Regular(name, value):
                             atts.push({ name: name, expr: value });
                         case Empty(name):
@@ -115,7 +124,7 @@ class ForestParser {
                     }
                 }
 
-                var childrenCount = node.children == null ? 0 : Lambda.count(node.children.value, c -> switch (c.value) {
+                var childrenCount = node.children == null ? 0 : Lambda.count(node.children.value, c -> switch c.value {
                     case CNode(_): true;
                     case _: false;
                 });
@@ -148,7 +157,7 @@ class ForestParser {
         return null;
     }
 
-    static function getInstanceExpr(name:StringAt, atts:Array<{name:StringAt, expr:Expr}>, childrenCount:Int):Expr {
+    function getInstanceExpr(name:StringAt, atts:Array<{name:StringAt, expr:Expr}>, childrenCount:Int):Expr {
         var params = [
             macro forest,
             macro $v{behaviors.length},
@@ -202,8 +211,8 @@ class ForestParser {
         return expr;
     }
 
-    static function setArg(inst:Expr, argIndex:Int, expr:Expr):Void {
-        switch (inst.expr) {
+    function setArg(inst:Expr, argIndex:Int, expr:Expr):Void {
+        switch inst.expr {
             case ENew(_, params):
                 params[argIndex] = expr;
             case _:
@@ -211,7 +220,7 @@ class ForestParser {
         }
     }
 
-    static function findAndRemove<T>(arr:Array<T>, check:T->Bool):T {
+    function findAndRemove<T>(arr:Array<T>, check:T->Bool):T {
         for (i in 0...arr.length) {
             if (check(arr[i])) {
                 return arr.splice(i, 1)[0];
@@ -220,20 +229,18 @@ class ForestParser {
         return null;
     }
 
-    static var configCache:Map<String, BehaviorConfig> = new Map();
-
-    static function getBehaviorConfig(nameAt:StringAt) {
+    function getBehaviorConfig(nameAt:StringAt) {
         var name = nameAt.value;
         if (configCache.exists(name)) return configCache.get(name);
         var configs = [];
         var behaviorType = Action;
         try {
-            switch (Context.getType(name)) {
+            switch Context.getType(name) {
                 case TInst(t, params):
                     var meta = Lambda.find(t.get().meta.get(), m -> m.name == ':behavior');
-                    switch (meta) {
+                    switch meta {
                         case { params: [{ expr: EConst(CString(s)) }] }:
-                            switch (s) {
+                            switch s {
                                 case "composite": behaviorType = Composite;
                                 case "decorator": behaviorType = Decorator;
                                 case "action": behaviorType = Action;
@@ -247,7 +254,7 @@ class ForestParser {
                     Context.registerModuleDependency('haxebt.ForestParser', file);
                     var fields = t.get().fields.get();
                     for (f in fields) {
-                        if (f.isFinal) switch (f.kind) {
+                        if (f.isFinal) switch f.kind {
                             case FVar(AccNormal, AccCtor):
                                 configs.push({ name: f.name, optional: f.meta.has(':optional') });
                             case _:

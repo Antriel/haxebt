@@ -1,69 +1,38 @@
-package haxebt;
+package haxebt.macros;
 
-#if macro
-import haxe.macro.ComplexTypeTools;
-import haxe.macro.Context;
-import haxe.macro.Expr.Field;
 import haxe.macro.Expr;
-import tink.hxx.Node;
-import tink.hxx.Parser;
-import tink.hxx.StringAt;
 
 using haxe.macro.Context;
-#end
 
 class ForestParser {
 
     public static macro function build():Array<Field> {
-        Context.registerModuleDependency('haxebt.ForestParser', "src/haxebt/BehaviorBuilder.hx");
         return new ForestParser().fields;
     }
 
-    #if macro
-    static final parserConfig:tink.hxx.Parser.ParserConfig = {
-        defaultExtension: 'hxx',
-        noControlStructures: true,
-        defaultSwitchTarget: macro __data__,
-        isVoid: function(_) return false,
-        treatNested: function(children) {
-            Context.error('Nested? ' + children, children.pos);
-            return null;
-        }
-    }
-
     final fields:Array<Field>;
-    var behaviors:Array<Expr> = [];
-    var configCache:Map<String, BehaviorConfig> = new Map();
+    final configCache:Map<String, BehaviorConfig> = new Map();
+    final behaviors:Array<Expr> = [];
 
     function new() {
-        var args = [];
-        var refs = [];
+        final args = [];
+        final refs = [];
         for (f in Context.getBuildFields()) {
             switch f.kind {
+                case FVar(t, null):
+                    args.push({ name: f.name, type: t });
                 case FVar(t, e):
-                    if (e != null) {
-                        refs.push({
-                            id: behaviors.length,
-                            name: f.name,
-                            pos: f.pos
-                        });
-                        var source = ParserSource.ofExpr(e);
-                        var rgx = ~/\/\/.*$|\/\*[\S\s]*?\*\//gm; // Remove comments.
-                        var str = rgx.map(source.source.string, match -> [for (_ in 0...match.matched(0).length) " "].join(""));
-                        @:privateAccess source.source.string = str;
-                        function create(source:ParserSource):Parser @:privateAccess return new Parser(source, create, parserConfig);
-                        var nodes = create(source).parseRootNode();
-                        createBehavior(nodes.value[0]);
-                    } else {
-                        args.push({ name: f.name, type: t });
-                    }
+                    refs.push({
+                        id: behaviors.length,
+                        name: f.name,
+                        pos: f.pos
+                    });
+                    createBehavior(e);
                 case _:
                     Context.warning('Unhandled field kind.', f.pos);
             }
         }
         // trace(new haxe.macro.Printer().printExpr(macro $b{behaviors}));
-
-        behaviors = behaviors.map(e -> macro forest.push($e));
 
         fields = [
             {
@@ -73,10 +42,10 @@ class ForestParser {
                 kind: FFun({
                     args: args,
                     params: [{ name: 'T' }],
-                    ret: macro:haxebt.BehaviorForest<T>,
+                    ret: macro :haxebt.BehaviorForest<T>,
                     expr: macro {
                         var forest = [];
-                        $b{behaviors};
+                        $b{behaviors.map(e -> macro forest.push($e))};
                         return cast forest;
                     }
                 })
@@ -87,7 +56,7 @@ class ForestParser {
             fields.push({
                 name: ref.name,
                 pos: ref.pos,
-                kind: FVar(macro:haxebt.BehaviorForest.BehaviorNodeID, macro $v{ref.id}),
+                kind: FVar(macro :haxebt.BehaviorNodeId, macro $v{ref.id}),
                 access: [APublic, AStatic, AInline]
             });
             mapInitArrExpr.push(macro $v{ref.name.toLowerCase()} => $v{ref.id});
@@ -95,46 +64,54 @@ class ForestParser {
         fields.push({
             name: 'treeMap',
             pos: Context.currentPos(),
-            kind: FVar(macro:Map<String, haxebt.BehaviorForest.BehaviorNodeID>, macro $a{mapInitArrExpr}),
+            kind: FVar(macro :Map<String, haxebt.BehaviorNodeId>, macro $a{mapInitArrExpr}),
             access: [AFinal, APrivate, AStatic]
         });
         fields.push({
             name: 'getByName',
             pos: Context.currentPos(),
             kind: FFun({
-                args: [{ name: 'name', type: macro:String }],
-                ret: macro:haxebt.BehaviorForest.BehaviorNodeID,
+                args: [{ name: 'name', type: macro :String }],
+                ret: macro :haxebt.BehaviorNodeId,
                 expr: macro return treeMap.get(name)
             }),
             access: [APublic, AStatic, AInline]
         });
     }
 
-    function createBehavior(root:Child):Expr {
-        switch root.value {
-            case CNode(node):
-                var atts = [];
-                for (att in node.attributes) {
-                    switch att {
-                        case Regular(name, value):
-                            atts.push({ name: name, expr: value });
-                        case Empty(name):
-                            atts.push({ name: name, expr: macro true });
-                        case _: Context.error('Unhandled attribute `$att`.', root.pos);
-                    }
-                }
-
-                var childrenCount = node.children == null ? 0 : Lambda.count(node.children.value, c -> switch c.value {
-                    case CNode(_): true;
-                    case _: false;
-                });
-                var inst:Expr = getInstanceExpr(node.name, atts, childrenCount);
+    function createBehavior(e:Expr):Expr {
+        switch e.expr {
+            case EConst(CIdent(name)):
+                final inst = getInstanceExpr(name, e.pos, [], 0);
                 behaviors.push(inst);
-                // trace(new haxe.macro.Printer().printExpr(macro $b{behaviors}));
-                if (node.children != null) {
+                return inst;
+            case ECall({ expr: EConst(CIdent(name)) }, params):
+                var children:Array<Expr> = null;
+                function exprToChildren(e:Expr) return switch e {
+                    case null: [];
+                    case { expr: EArrayDecl(fields) }: fields;
+                    case e: [e];
+                }
+                final atts = switch params[0] {
+                    case null: [];
+                    case { expr: EObjectDecl(fields) }: fields.map(f -> {name: f.field, expr: f.expr });
+                    case e:
+                        children = exprToChildren(e);
+                        [];
+                }
+                if (children != null && params.length > 1)
+                    Context.error('Unexpected second argument (assuming first argument "${params[0].expr.getName()}" are children', params[1].pos);
+                if (children == null) children = switch params[1] {
+                    case null: [];
+                    case { expr: EArrayDecl(fields) }: fields;
+                    case e: [e];
+                }
+                final inst:Expr = getInstanceExpr(name, e.pos, atts, children.length);
+                behaviors.push(inst);
+                if (children.length > 0) {
                     setArg(inst, 3, macro $v{behaviors.length});
                     var prev = null;
-                    for (child in node.children.value) {
+                    for (child in children) {
                         var siblingId = behaviors.length;
                         var next = createBehavior(child);
                         if (prev != null && next != null) {
@@ -145,37 +122,32 @@ class ForestParser {
                     }
                 }
                 return inst;
-            case CText(text):
-                var trimmed = StringTools.trim(text.value);
-                var ignore = trimmed == '' || (StringTools.startsWith(trimmed, '//') && trimmed.indexOf('\n') == -1);
-                if (!ignore) {
-                    Context.error('Unhandled CText node: ' + text.value, text.pos);
-                }
-            case a:
-                Context.error('Unhandled node type: $a', root.pos);
+            case ECall(e, params): Context.error('Expected identifier.', e.pos);
+            case _: Context.error('Unhandled expr "${e.expr.getName()}".', e.pos);
         }
         return null;
     }
 
-    function getInstanceExpr(name:StringAt, atts:Array<{name:StringAt, expr:Expr}>, childrenCount:Int):Expr {
+    function getInstanceExpr(name:String, pos:Position, atts:Array<{name:String, expr:Expr}>,
+            childrenCount:Int):Expr {
         var params = [
             macro forest,
             macro $v{behaviors.length},
-            macro haxebt.BehaviorForest.BehaviorNodeID.NONE,
-            macro haxebt.BehaviorForest.BehaviorNodeID.NONE
+            macro haxebt.BehaviorNodeId.NONE,
+            macro haxebt.BehaviorNodeId.NONE
         ];
         var expr:Expr = {
             pos: Context.currentPos(),
-            expr: ENew({ name: name.value, pack: [] }, params)
+            expr: ENew({ name: name, pack: [] }, params)
         };
 
         var missing = [];
-        var config = getBehaviorConfig(name);
-        config.behaviorType.check(childrenCount, name);
+        var config = getBehaviorConfig(name, pos);
+        config.behaviorType.check(childrenCount, name, pos);
 
         for (c in config.configs) {
             if (atts.length == 0) break;
-            var att = findAndRemove(atts, a -> a.name.value == c.name);
+            var att = findAndRemove(atts, a -> a.name == c.name);
             if (att != null) {
                 params.push(att.expr);
             } else {
@@ -191,21 +163,21 @@ class ForestParser {
             var closest = null;
             var dist = 0;
             for (c in config.configs) {
-                var d = levenshtein(c.name, att.name.value);
+                var d = levenshtein(c.name, att.name);
                 if (closest == null || dist > d) {
                     closest = c.name;
                     dist = d;
                 }
             }
             if (closest != null) {
-                Context.warning('Unknown attribute, did you mean `$closest`?', att.name.pos);
-            } else Context.warning('Unknown attribute.', att.name.pos);
+                Context.warning('Unknown attribute, did you mean `$closest`?', pos);
+            } else Context.warning('Unknown attribute.', pos);
         }
 
         if (missing.length > 0) {
             var many = missing.length > 1;
             var args = missing.map(n -> '`$n`').join(', ');
-            Context.error('Missing attribute${many ? 's' : ''} $args ${many ? 'are' : 'is'} required for `${name.value}`.', name.pos);
+            Context.error('Missing attribute${many ? 's' : ''} $args ${many ? 'are' : 'is'} required for `${name}`.', pos);
         }
 
         return expr;
@@ -229,8 +201,7 @@ class ForestParser {
         return null;
     }
 
-    function getBehaviorConfig(nameAt:StringAt) {
-        var name = nameAt.value;
+    function getBehaviorConfig(name:String, pos:Position) {
         if (configCache.exists(name)) return configCache.get(name);
         var configs = [];
         var behaviorType = Action;
@@ -249,9 +220,6 @@ class ForestParser {
                         case null: // default is action
                         case _: Context.error('Invalid behavior type value.', meta.pos);
                     }
-                    var pos = t.get().pos;
-                    var file = pos.getPosInfos().file;
-                    Context.registerModuleDependency('haxebt.ForestParser', file);
                     var fields = t.get().fields.get();
                     for (f in fields) {
                         if (f.isFinal) switch f.kind {
@@ -263,7 +231,7 @@ class ForestParser {
                 case _:
             }
         } catch (e:Dynamic) {
-            Context.error('Unknown Behavior ${nameAt.value}.', nameAt.pos);
+            Context.error('Unknown Behavior $name.', pos);
             return null;
         }
         configs.sort((a, b) -> BehaviorBuilder.sortConfig(a.name, b.name, a.optional, b.optional));
@@ -287,11 +255,9 @@ class ForestParser {
                     d[i - 1][j - 1] + (s1.charAt(i - 1) == s2.charAt(j - 1) ? 0 : 1));
         return (d[len1][len2]);
     }
-    #end
 
 }
 
-#if macro
 typedef BehaviorConfig = {
 
     behaviorType:BehaviorType,
@@ -305,17 +271,16 @@ enum abstract BehaviorType(String) {
     var Composite = "composite";
     var Decorator = "decorator";
 
-    public inline function check(count:Int, name:StringAt) {
+    public inline function check(count:Int, name:String, pos:Position) {
         switch (cast this:BehaviorType) {
             case Action if (count != 0):
-                Context.fatalError('Action ${name.value} cannot have children. Got $count.', name.pos);
+                Context.fatalError('Action ${name} cannot have children. Got $count.', pos);
             case Decorator if (count != 1):
-                Context.fatalError('Decorator ${name.value} expects exactly 1 child. Got $count.', name.pos);
+                Context.fatalError('Decorator ${name} expects exactly 1 child. Got $count.', pos);
             case Composite if (count == 0):
-                Context.fatalError('Composite ${name.value} expects at least 1 children. Got $count.', name.pos);
+                Context.fatalError('Composite ${name} expects at least 1 children. Got $count.', pos);
             case _:
         }
     }
 
 }
-#end

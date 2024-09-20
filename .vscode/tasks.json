@@ -6,10 +6,16 @@
 			"args": "active configuration",
 			"problemMatcher": [],
 			"label": "haxe: active configuration",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared",
+				"showReuseMessage": false,
+				"clear": true
+			}
 		}
 	]
 }

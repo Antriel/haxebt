@@ -21,18 +21,14 @@ class TestParsed extends Test {
 
 }
 
-@:build(haxebt.ForestParser.build())
+@:build(haxebt.macros.ForestParser.build())
 class Forest {
 
     public static final initLife:Int;
 
-    // @formatter:off
-    public static var Life =  <SetLife life={initLife}/>
-    // @formatter:on
-    // @formatter:off
-    public static var Death = 
-    <Sequence>
-        <DecLife />
-    </Sequence>
-    // @formatter:on
+    public static var Life = SetLife({ life: initLife });
+    public static var Death = Sequence([
+        DecLife
+    ]);
+
 }

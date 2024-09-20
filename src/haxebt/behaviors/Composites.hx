@@ -1,7 +1,6 @@
 package haxebt.behaviors;
 
-import haxebt.BehaviorForest.BehaviorNodeID;
-import haxebt.behaviors.Behavior.BehaviorResult;
+import haxebt.BehaviorNodeId;
 
 @:behavior("composite")
 class Sequence<T> extends Behavior<T> {
@@ -37,7 +36,7 @@ class Sequence<T> extends Behavior<T> {
 
 typedef ChildData = {
 
-    child:BehaviorNodeID
+    child:BehaviorNodeId
 
 }
 

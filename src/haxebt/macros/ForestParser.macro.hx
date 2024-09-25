@@ -137,7 +137,7 @@ class ForestParser {
             macro haxebt.BehaviorNodeId.NONE
         ];
         var expr:Expr = {
-            pos: Context.currentPos(),
+            pos: pos,
             expr: ENew({ name: name, pack: [] }, params)
         };
 

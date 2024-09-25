@@ -80,6 +80,7 @@ class BehaviorBuilder {
             kind: FFun({ ret: null, args: [], expr: infoExpr })
         });
         #end
+        // for (f in fields) trace(new haxe.macro.Printer().printField(f));
         return fields;
     }
 

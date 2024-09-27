@@ -11,12 +11,13 @@ using haxe.macro.Context;
 class BehaviorBuilder {
 
     public static macro function build():Array<Field> {
+        final curPos = Context.currentPos();
         var fields = Context.getBuildFields();
         var i = fields.length - 1;
         var localClass = Context.getLocalClass().get();
         var classModule = localClass.module;
         var entityType = localClass.superClass.params[0];
-        var toInit = [];
+        var toInit:Array<Field> = [];
         while (i >= 0) {
             var field = fields[i];
             switch (field) {
@@ -25,36 +26,43 @@ class BehaviorBuilder {
                 case { name: 'run', pos: pos }:
                     Context.error('Behavior should not implement `run` directly. Implement `execute` instead', pos);
                 case { name: name, kind: FVar(t, e), access: [AFinal] }:
-                    if (e != null) { // remove the default val, otherwise constructor will assign it twice
-                        field.kind = FVar(t, null);
-                        field.meta.push({ name: ':optional', pos: field.pos });
-                    }
-                    toInit.push({ name: name, type: t, def: e });
+                    toInit.push({
+                        name: name,
+                        doc: field.doc,
+                        kind: FVar(t),
+                        pos: field.pos,
+                        meta: e != null ? [{ name: ':optional', pos: field.pos }] : null,
+                    });
                 case _:
             }
             i--;
         }
 
         if (toInit.length > 0) {
-            toInit.sort((a, b) -> sortConfig(a.name, b.name, a.def != null, b.def != null));
             var args:Array<FunctionArg> = BehaviorBuilder.behaviorBaseArgs.copy();
             var exprs = [];
             exprs.push(macro super(forest, id, sibling, child));
-            for (init in toInit) {
-                args.push({
-                    name: init.name,
-                    opt: init.def != null,
-                    type: init.type,
-                    value: init.def
-                });
-                var n = init.name;
-                exprs.push(macro this.$n = $i{n});
-            }
+            // Only optional if all fields are optional.
+            final configOptional = !Lambda.exists(toInit, f -> f.meta == null);
+
+            args.push({ name: 'config', type: TAnonymous(toInit), opt: configOptional, });
+
+            var configInit = [for (f in toInit) {
+                final n = f.name;
+                final configExpr = { expr: EField(macro config, n), pos: curPos };
+                var assignExpr = macro this.$n = $configExpr;
+                // If optional, check if defined.
+                if (f.meta != null) assignExpr = macro if ($configExpr != null) $assignExpr;
+                assignExpr;
+            }];
+            if (configOptional) {
+                exprs.push(macro if (config != null) $b{configInit});
+            } else for (e in configInit) exprs.push(e);
             fields.push({
-                pos: Context.currentPos(),
+                pos: curPos,
                 name: 'new',
                 access: [APublic],
-                kind: FFun({ ret: null, args: args, expr: { pos: Context.currentPos(), expr: EBlock(exprs) } })
+                kind: FFun({ ret: null, args: args, expr: { pos: curPos, expr: EBlock(exprs) } })
             });
         }
         #if haxebt.debug
@@ -73,21 +81,15 @@ class BehaviorBuilder {
             params: $a{params}
         }
         fields.push({
-            pos: Context.currentPos(),
+            pos: curPos,
             name: 'getInfo',
             access: [APublic, AOverride],
-            meta: [{ name: ':keep', pos: Context.currentPos() }],
+            meta: [{ name: ':keep', pos: curPos }],
             kind: FFun({ ret: null, args: [], expr: infoExpr })
         });
         #end
         // for (f in fields) trace(new haxe.macro.Printer().printField(f));
         return fields;
-    }
-
-    public static inline function sortConfig(aName:String, bName:String, aOpt:Bool, bOpt:Bool) {
-        if (!aOpt && bOpt) return -1;
-        else if (!bOpt && aOpt) return 1;
-        else return aName > bName ? 1 : -1;
     }
 
     public static var behaviorBaseArgs:Array<FunctionArg> = [
@@ -121,7 +123,6 @@ class BehaviorBuilder {
         }
         expr = ExprTools.map(expr, replaceRunOther);
         expr = ExprTools.map(expr, replaceClearData);
-        expr = ExprTools.map(expr, replaceDeltaTime);
         #if haxebt.debug
         expr = ExprTools.map(expr, addDebugToReturn);
         #end
@@ -139,12 +140,11 @@ class BehaviorBuilder {
         #end
         return {
             name: 'run',
-            access: [AOverride, APublic],
+            access: [APublic],
             kind: FFun({
                 args: [
                     { name: 'storage', type: macro :Map<haxebt.BehaviorNodeId, Dynamic> },
                     { name: entityArgName, type: entityType.toComplexType() },
-                    { name: 'dt', type: macro :Float }
                 ],
                 ret: macro :haxebt.behaviors.Behavior.BehaviorResult,
                 // expr: tink.MacroApi.Exprs.concat(tink.MacroApi.Exprs.concat(debugExpr, dataInit), expr)
@@ -184,7 +184,7 @@ class BehaviorBuilder {
     private static function replaceRunOther(e:Expr):Expr {
         return switch (e.expr) {
             case ECall({ expr: EConst(CIdent('runOther')) }, params):
-                macro ${params[0]}.run(storage, $i{entityArgName}, dt);
+                macro ${params[0]}.run(storage, $i{entityArgName});
             case _: ExprTools.map(e, replaceRunOther);
         }
     }
@@ -194,14 +194,6 @@ class BehaviorBuilder {
             case ECall({ expr: EConst(CIdent('clearData')) }, params):
                 macro storage.remove(this.id);
             case _: ExprTools.map(e, replaceClearData);
-        }
-    }
-
-    private static function replaceDeltaTime(e:Expr):Expr {
-        return switch (e.expr) {
-            case ECall({ expr: EConst(CIdent('deltaTime')) }, params):
-                macro dt;
-            case _: ExprTools.map(e, replaceDeltaTime);
         }
     }
 

@@ -82,7 +82,7 @@ class ForestParser {
     function createBehavior(e:Expr):Expr {
         switch e.expr {
             case EConst(CIdent(name)):
-                final inst = getInstanceExpr(name, e.pos, [], 0);
+                final inst = getInstanceExpr(name, e.pos, null, 0);
                 behaviors.push(inst);
                 return inst;
             case ECall({ expr: EConst(CIdent(name)) }, params):
@@ -92,12 +92,13 @@ class ForestParser {
                     case { expr: EArrayDecl(fields) }: fields;
                     case e: [e];
                 }
-                final atts = switch params[0] {
-                    case null: [];
-                    case { expr: EObjectDecl(fields) }: fields.map(f -> {name: f.field, expr: f.expr });
+                final atts:Expr = switch params[0] {
+                    case null: null;
+                    case { expr: EObjectDecl(_) }: params[0];
+                    case { expr: EBlock([]) }: null; // Empty config.
                     case e:
                         children = exprToChildren(e);
-                        [];
+                        null;
                 }
                 if (children != null && params.length > 1)
                     Context.error('Unexpected second argument (assuming first argument "${params[0].expr.getName()}" are children', params[1].pos);
@@ -128,57 +129,21 @@ class ForestParser {
         return null;
     }
 
-    function getInstanceExpr(name:String, pos:Position, atts:Array<{name:String, expr:Expr}>,
-            childrenCount:Int):Expr {
+    function getInstanceExpr(name:String, pos:Position, configArg:Expr, childrenCount:Int):Expr {
         var params = [
             macro forest,
             macro $v{behaviors.length},
             macro haxebt.BehaviorNodeId.NONE,
             macro haxebt.BehaviorNodeId.NONE
         ];
+        if (configArg != null) params.push(configArg);
         var expr:Expr = {
             pos: pos,
             expr: ENew({ name: name, pack: [] }, params)
         };
 
-        var missing = [];
         var config = getBehaviorConfig(name, pos);
         config.behaviorType.check(childrenCount, name, pos);
-
-        for (c in config.configs) {
-            if (atts.length == 0) break;
-            var att = findAndRemove(atts, a -> a.name == c.name);
-            if (att != null) {
-                params.push(att.expr);
-            } else {
-                if (c.optional) {
-                    params.push(macro null);
-                } else {
-                    missing.push(c.name);
-                }
-            }
-        }
-
-        for (att in atts) {
-            var closest = null;
-            var dist = 0;
-            for (c in config.configs) {
-                var d = levenshtein(c.name, att.name);
-                if (closest == null || dist > d) {
-                    closest = c.name;
-                    dist = d;
-                }
-            }
-            if (closest != null) {
-                Context.warning('Unknown attribute, did you mean `$closest`?', pos);
-            } else Context.warning('Unknown attribute.', pos);
-        }
-
-        if (missing.length > 0) {
-            var many = missing.length > 1;
-            var args = missing.map(n -> '`$n`').join(', ');
-            Context.error('Missing attribute${many ? 's' : ''} $args ${many ? 'are' : 'is'} required for `${name}`.', pos);
-        }
 
         return expr;
     }
@@ -190,15 +155,6 @@ class ForestParser {
             case _:
                 Context.error("Expected ENew", Context.currentPos());
         }
-    }
-
-    function findAndRemove<T>(arr:Array<T>, check:T->Bool):T {
-        for (i in 0...arr.length) {
-            if (check(arr[i])) {
-                return arr.splice(i, 1)[0];
-            }
-        }
-        return null;
     }
 
     function getBehaviorConfig(name:String, pos:Position) {
@@ -234,26 +190,9 @@ class ForestParser {
             Context.error('Unknown Behavior $name.', pos);
             return null;
         }
-        configs.sort((a, b) -> BehaviorBuilder.sortConfig(a.name, b.name, a.optional, b.optional));
         var behaviorConfig = { behaviorType: behaviorType, configs: configs };
         configCache.set(name, behaviorConfig);
         return behaviorConfig;
-    }
-
-    static function levenshtein(s1:String, s2:String):Int {
-        final len1 = s1.length, len2 = s2.length;
-        var d:Array<Array<Int>> = [for (i in 0...len1 + 1) new Array()];
-
-        d[0][0] = 0;
-
-        for (i in 1...len1 + 1) d[i][0] = i;
-        for (i in 1...len2 + 1) d[0][i] = i;
-
-        for (i in 1...len1 + 1)
-            for (j in 1...len2 + 1)
-                d[i][j] = cast Math.min(Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1),
-                    d[i - 1][j - 1] + (s1.charAt(i - 1) == s2.charAt(j - 1) ? 0 : 1));
-        return (d[len1][len2]);
     }
 
 }

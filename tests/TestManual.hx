@@ -11,19 +11,20 @@ class TestManual extends Test {
         var e = { life: 3 };
         var forest:BehaviorForest<LifeEntity> = [];
         forest.push(new DecLife(forest, 1, 2, -1));
-        forest[0].run(null, e, 0);
+        forest[0].run(null, e);
         Assert.equals(2, e.life);
     }
 
     public function testSimpleSequence() {
         var e = { life: 3 };
         var forest:BehaviorForest<LifeEntity> = [];
+        eval.vm.Context.breakHere();
         forest.push(new Sequence(forest, 0, -1, 1));
-        forest.push(new DecLife(forest, 1, 2, -1, true));
-        forest.push(new DecLife(forest, 2, -1, -1, true));
+        forest.push(new DecLife(forest, 1, 2, -1, { once: true }));
+        forest.push(new DecLife(forest, 2, -1, -1, { once: true }));
         var res = null;
         do {
-            res = forest[0].run([], e, 0);
+            res = forest[0].run([], e);
         } while (res != Success);
         Assert.equals(1, e.life);
     }

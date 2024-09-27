@@ -26,3 +26,25 @@ class SetLife extends Behavior<LifeEntity> {
     }
 
 }
+
+@:behavior("composite") class CustomComposite<T> extends Behavior<T> {
+
+    final index:Int;
+
+    function init() {
+        var i = index;
+        var id = child;
+        while (i-- > 0) id = forest[id].sibling;
+        return id;
+    }
+
+    function execute(child) {
+        return switch runOther(forest[child]) {
+            case Running: Running;
+            case res:
+                clearData();
+                res;
+        }
+    }
+
+}

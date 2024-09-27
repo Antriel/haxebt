@@ -3,7 +3,7 @@ package haxebt.behaviors;
 import haxebt.BehaviorNodeId;
 
 @:autoBuild(haxebt.macros.BehaviorBuilder.build())
-class Behavior<T> {
+abstract class Behavior<T> {
 
     public final forest:BehaviorForest<T>;
     public final id:BehaviorNodeId;
@@ -18,15 +18,11 @@ class Behavior<T> {
         this.child = child;
     }
 
-    public function run(storage:Map<BehaviorNodeId, Dynamic>, entity:T, deltaTime:Float):BehaviorResult {
-        throw "Abstract class.";
-    }
+    public abstract function run(storage:Map<BehaviorNodeId, Dynamic>, entity:T):BehaviorResult;
 
     @:dce function runOther(b:Behavior<T>):BehaviorResult throw "Shouldn't actually get called.";
 
     @:dce function clearData():Void throw "Shouldn't actually get called.";
-
-    @:dce function deltaTime():Float throw "Shouldn't actually get called.";
 
     #if haxebt.debug
     public function getInfo():Dynamic return null;

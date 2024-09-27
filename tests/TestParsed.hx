@@ -10,13 +10,20 @@ class TestParsed extends Test {
     public function testSimple() {
         var e = { life: 3 };
         var forest = Forest.build(10);
-        forest[Forest.Life].run([], e, 0);
+        forest[Forest.Life].run([], e);
         Assert.equals(10, e.life);
         var res = null;
         do {
-            res = forest[Forest.Death].run([], e, 0);
+            res = forest[Forest.Death].run([], e);
         } while (res == Running);
         Assert.equals(0, e.life);
+    }
+
+    public function testOrder() {
+        var e = { life: 3 };
+        var forest = Forest.build(5);
+        forest[Forest.Order].run([], e);
+        Assert.equals(5, e.life);
     }
 
 }
@@ -29,6 +36,10 @@ class Forest {
     public static var Life = SetLife({ life: initLife });
     public static var Death = Sequence([
         DecLife
+    ]);
+    public static var Order = CustomComposite({ index: 1 }, [
+        DecLife,
+        SetLife({ life: 5 }),
     ]);
 
 }

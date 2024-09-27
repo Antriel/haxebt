@@ -11,7 +11,6 @@ class ForestParser {
     }
 
     final fields:Array<Field>;
-    final configCache:Map<String, BehaviorConfig> = new Map();
     final behaviors:Array<Expr> = [];
 
     function new() {
@@ -27,7 +26,7 @@ class ForestParser {
                         name: f.name,
                         pos: f.pos
                     });
-                    createBehavior(e);
+                    addBehavior(e);
                 case _:
                     Context.warning('Unhandled field kind.', f.pos);
             }
@@ -79,128 +78,66 @@ class ForestParser {
         });
     }
 
-    function createBehavior(e:Expr):Expr {
-        switch e.expr {
-            case EConst(CIdent(name)):
-                final inst = getInstanceExpr(name, e.pos, null, 0);
-                behaviors.push(inst);
-                return inst;
-            case ECall({ expr: EConst(CIdent(name)) }, params):
-                var children:Array<Expr> = null;
-                function exprToChildren(e:Expr) return switch e {
-                    case null: [];
-                    case { expr: EArrayDecl(fields) }: fields;
-                    case e: [e];
-                }
-                final atts:Expr = switch params[0] {
-                    case null: null;
-                    case { expr: EObjectDecl(_) }: params[0];
-                    case { expr: EBlock([]) }: null; // Empty config.
-                    case e:
-                        children = exprToChildren(e);
-                        null;
-                }
-                if (children != null && params.length > 1)
-                    Context.error('Unexpected second argument (assuming first argument "${params[0].expr.getName()}" are children', params[1].pos);
-                if (children == null) children = switch params[1] {
-                    case null: [];
-                    case { expr: EArrayDecl(fields) }: fields;
-                    case e: [e];
-                }
-                final inst:Expr = getInstanceExpr(name, e.pos, atts, children.length);
-                behaviors.push(inst);
-                if (children.length > 0) {
-                    setArg(inst, 3, macro $v{behaviors.length});
-                    var prev = null;
-                    for (child in children) {
-                        var siblingId = behaviors.length;
-                        var next = createBehavior(child);
-                        if (prev != null && next != null) {
-                            setArg(prev, 2, macro $v{siblingId});
-                        }
-                        if (next == null) continue;
-                        prev = next;
-                    }
-                }
-                return inst;
-            case ECall(e, params): Context.error('Expected identifier.', e.pos);
-            case _: Context.error('Unhandled expr "${e.expr.getName()}".', e.pos);
-        }
-        return null;
-    }
-
-    function getInstanceExpr(name:String, pos:Position, configArg:Expr, childrenCount:Int):Expr {
-        var params = [
+    function addBehavior(e:Expr):Array<Expr> {
+        final args = [
             macro forest,
             macro $v{behaviors.length},
             macro haxebt.BehaviorNodeId.NONE,
             macro haxebt.BehaviorNodeId.NONE
         ];
-        if (configArg != null) params.push(configArg);
-        var expr:Expr = {
-            pos: pos,
-            expr: ENew({ name: name, pack: [] }, params)
-        };
-
-        var config = getBehaviorConfig(name, pos);
-        config.behaviorType.check(childrenCount, name, pos);
-
-        return expr;
-    }
-
-    function setArg(inst:Expr, argIndex:Int, expr:Expr):Void {
-        switch inst.expr {
-            case ENew(_, params):
-                params[argIndex] = expr;
-            case _:
-                Context.error("Expected ENew", Context.currentPos());
+        final beh = switch e.expr {
+            // TODO support dot paths too. (Wait, is that valid syntax?)
+            case EConst(CIdent(name)):
+                { expr: ENew({ name: name, pack: [] }, args), children: [], name: name };
+            case ECall({ expr: EConst(CIdent(name)) }, params):
+                var childrenExpr = params[1];
+                switch params[0] {
+                    case null | { expr: EBlock([]) }: // Empty config. Ignore.
+                    case { expr: EObjectDecl(_) }: args.push(params[0]); // Config object, pass it through.
+                    case e: // Assuming it's children.
+                        if (childrenExpr != null)
+                            Context.error('Unexpected second argument (assuming first argument "${e.expr.getName()}" are children', params[1].pos);
+                        childrenExpr = e;
+                }
+                final children = switch childrenExpr {
+                    case null: [];
+                    case { expr: EArrayDecl(fields) }: fields;
+                    case e: [e];
+                }
+                { expr: ENew({ name: name, pack: [] }, args), children: children, name: name };
+            case ECall(e, params): Context.error('Expected identifier.', e.pos);
+            case _: Context.error('Unhandled expr "${e.expr.getName()}".', e.pos);
         }
-    }
-
-    function getBehaviorConfig(name:String, pos:Position) {
-        if (configCache.exists(name)) return configCache.get(name);
-        var configs = [];
-        var behaviorType = Action;
-        try {
-            switch Context.getType(name) {
-                case TInst(t, params):
-                    var meta = Lambda.find(t.get().meta.get(), m -> m.name == ':behavior');
-                    switch meta {
-                        case { params: [{ expr: EConst(CString(s)) }] }:
-                            switch s {
-                                case "composite": behaviorType = Composite;
-                                case "decorator": behaviorType = Decorator;
-                                case "action": behaviorType = Action;
-                                case _: Context.error('Invalid behavior type $s.', meta.pos);
-                            }
-                        case null: // default is action
-                        case _: Context.error('Invalid behavior type value.', meta.pos);
-                    }
-                    var fields = t.get().fields.get();
-                    for (f in fields) {
-                        if (f.isFinal) switch f.kind {
-                            case FVar(AccNormal, AccCtor):
-                                configs.push({ name: f.name, optional: f.meta.has(':optional') });
-                            case _:
-                        }
-                    }
-                case _:
+        behaviors.push({ expr: beh.expr, pos: e.pos });
+        if (beh.children.length > 0) {
+            args[3] = macro $v{behaviors.length}; // Set next behavior as child of this one.
+            var prev = null;
+            for (child in beh.children) {
+                var siblingId = behaviors.length;
+                var next = addBehavior(child);
+                if (prev != null) prev[2] = macro $v{siblingId};
+                prev = next;
             }
-        } catch (e:Dynamic) {
-            Context.error('Unknown Behavior $name.', pos);
-            return null;
         }
-        var behaviorConfig = { behaviorType: behaviorType, configs: configs };
-        configCache.set(name, behaviorConfig);
-        return behaviorConfig;
+        try switch Context.getType(beh.name) {
+            case TInst(t, params):
+                var meta = Lambda.find(t.get().meta.get(), m -> m.name == ':behavior');
+                final behaviorType = switch meta {
+                    case { params: [{ expr: EConst(CString(s)) }] }:
+                        switch s {
+                            case "composite": Composite;
+                            case "decorator": Decorator;
+                            case "action": Action;
+                            case _: Context.error('Invalid behavior type $s.', meta.pos);
+                        }
+                    case null: Action;
+                    case _: Context.error('Invalid behavior type value.', meta.pos);
+                }
+                behaviorType.check(beh.children.length, beh.name, e.pos);
+            case _: Context.error('Expected TInst.', e.pos);
+        } catch (_) Context.error('Unknown Behavior ${beh.name}.', e.pos);
+        return args;
     }
-
-}
-
-typedef BehaviorConfig = {
-
-    behaviorType:BehaviorType,
-    configs:Array<{name:String, optional:Bool}>
 
 }
 

@@ -40,6 +40,10 @@ class Forest {
     public static var Order = CustomComposite({ index: 1 }, [
         DecLife,
         SetLife({ life: 5 }),
+        sub.Beh,
+        sub.subber.Beh2({ }),
+        sub.subber.Beh2.Beh3({ }),
+        sub.subber.Beh2.Beh3,
     ]);
 
 }

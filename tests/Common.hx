@@ -18,7 +18,7 @@ class DecLife extends Behavior<LifeEntity> {
 
 class SetLife extends Behavior<LifeEntity> {
 
-    @:keep final life:Int;
+    final life:Int;
 
     function execute(entity:LifeEntity) {
         entity.life = life;

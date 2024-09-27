@@ -85,11 +85,21 @@ class ForestParser {
             macro haxebt.BehaviorNodeId.NONE,
             macro haxebt.BehaviorNodeId.NONE
         ];
+        inline function parsePath(e:Expr):Array<String> {
+            final path = [];
+            function parse(e:Expr) switch e.expr {
+                case EConst(CIdent(s)): path.unshift(s);
+                case EField(e, field):
+                    path.unshift(field);
+                    parse(e);
+                case _: Context.error('Unhandled expr "${e.expr.getName()}".', e.pos);
+            }
+            parse(e);
+            return path;
+        }
         final beh = switch e.expr {
-            // TODO support dot paths too. (Wait, is that valid syntax?)
-            case EConst(CIdent(name)):
-                { expr: ENew({ name: name, pack: [] }, args), children: [], name: name };
-            case ECall({ expr: EConst(CIdent(name)) }, params):
+            case EConst(CIdent(name)): { path: [name], children: [] };
+            case ECall(e, params):
                 var childrenExpr = params[1];
                 switch params[0] {
                     case null | { expr: EBlock([]) }: // Empty config. Ignore.
@@ -104,11 +114,19 @@ class ForestParser {
                     case { expr: EArrayDecl(fields) }: fields;
                     case e: [e];
                 }
-                { expr: ENew({ name: name, pack: [] }, args), children: children, name: name };
-            case ECall(e, params): Context.error('Expected identifier.', e.pos);
+                { path: parsePath(e), children: children };
+            case EField(e, name): { path: parsePath(e).concat([name]), children: [] };
             case _: Context.error('Unhandled expr "${e.expr.getName()}".', e.pos);
         }
-        behaviors.push({ expr: beh.expr, pos: e.pos });
+        final upperIndex = Lambda.findIndex(beh.path, s -> s.charCodeAt(0) < 91);
+        behaviors.push({
+            expr: ENew({
+                name: beh.path[upperIndex],
+                pack: beh.path.slice(0, upperIndex),
+                sub: beh.path[upperIndex + 1],
+            }, args),
+            pos: e.pos
+        });
         if (beh.children.length > 0) {
             args[3] = macro $v{behaviors.length}; // Set next behavior as child of this one.
             var prev = null;
@@ -119,7 +137,7 @@ class ForestParser {
                 prev = next;
             }
         }
-        try switch Context.getType(beh.name) {
+        try switch Context.getType(beh.path.join('.')) {
             case TInst(t, params):
                 var meta = Lambda.find(t.get().meta.get(), m -> m.name == ':behavior');
                 final behaviorType = switch meta {
@@ -133,9 +151,9 @@ class ForestParser {
                     case null: Action;
                     case _: Context.error('Invalid behavior type value.', meta.pos);
                 }
-                behaviorType.check(beh.children.length, beh.name, e.pos);
+                behaviorType.check(beh.children.length, e.pos);
             case _: Context.error('Expected TInst.', e.pos);
-        } catch (_) Context.error('Unknown Behavior ${beh.name}.', e.pos);
+        } catch (_) Context.error('Unknown Behavior ${beh.path.join('.')}.', e.pos);
         return args;
     }
 
@@ -147,14 +165,14 @@ enum abstract BehaviorType(String) {
     var Composite = "composite";
     var Decorator = "decorator";
 
-    public inline function check(count:Int, name:String, pos:Position) {
+    public inline function check(count:Int, pos:Position) {
         switch (cast this:BehaviorType) {
             case Action if (count != 0):
-                Context.fatalError('Action ${name} cannot have children. Got $count.', pos);
+                Context.fatalError('Action cannot have children. Got $count.', pos);
             case Decorator if (count != 1):
-                Context.fatalError('Decorator ${name} expects exactly 1 child. Got $count.', pos);
+                Context.fatalError('Decorator expects exactly 1 child. Got $count.', pos);
             case Composite if (count == 0):
-                Context.fatalError('Composite ${name} expects at least 1 children. Got $count.', pos);
+                Context.fatalError('Composite expects at least 1 children. Got $count.', pos);
             case _:
         }
     }

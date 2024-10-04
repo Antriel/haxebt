@@ -1,5 +1,4 @@
 import Common;
-import haxebt.BehaviorForest;
 import haxebt.behaviors.Behavior;
 import haxebt.behaviors.Composites;
 import utest.Assert;
@@ -9,7 +8,7 @@ class TestParsed extends Test {
 
     public function testSimple() {
         var e = { life: 3 };
-        var forest = Forest.build(10);
+        var forest = Forest.build(null, 10);
         forest[Forest.Life].run([], e);
         Assert.equals(10, e.life);
         var res = null;
@@ -21,15 +20,14 @@ class TestParsed extends Test {
 
     public function testOrder() {
         var e = { life: 3 };
-        var forest = Forest.build(5);
+        var forest = Forest.build(null, 5);
         forest[Forest.Order].run([], e);
         Assert.equals(5, e.life);
     }
 
 }
 
-@:build(haxebt.macros.ForestParser.build())
-class Forest {
+class Forest implements haxebt.IForest {
 
     public static final initLife:Int;
 

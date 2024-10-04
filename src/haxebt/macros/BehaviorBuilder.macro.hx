@@ -41,7 +41,7 @@ class BehaviorBuilder {
         if (toInit.length > 0) {
             var args:Array<FunctionArg> = BehaviorBuilder.behaviorBaseArgs.copy();
             var exprs = [];
-            exprs.push(macro super(forest, id, sibling, child));
+            exprs.push(macro super(forest, world, id, sibling, child));
             // Only optional if all fields are optional.
             final configOptional = !Lambda.exists(toInit, f -> f.meta == null);
 
@@ -94,6 +94,7 @@ class BehaviorBuilder {
 
     public static var behaviorBaseArgs:Array<FunctionArg> = [
         { name: 'forest', type: null },
+        { name: 'world', type: null },
         { name: 'id', type: macro :haxebt.BehaviorNodeId },
         { name: 'sibling', type: macro :haxebt.BehaviorNodeId },
         { name: 'child', type: macro :haxebt.BehaviorNodeId }

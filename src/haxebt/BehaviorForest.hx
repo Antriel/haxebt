@@ -3,4 +3,4 @@ package haxebt;
 import haxebt.behaviors.Behavior;
 
 @:forward(push)
-abstract BehaviorForest<T>(Array<Behavior<T>>) from Array<Behavior<T>> to Array<Behavior<T>> { }
+abstract BehaviorForest<E, W>(Array<Behavior<E, W>>) from Array<Behavior<E, W>> to Array<Behavior<E, W>> { }

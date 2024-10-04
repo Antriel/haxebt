@@ -4,29 +4,31 @@ import haxe.macro.Expr;
 
 using haxe.macro.Context;
 
-class ForestParser {
+class ForestBuilder {
 
     public static macro function build():Array<Field> {
-        return new ForestParser().fields;
+        return new ForestBuilder().fields;
     }
 
     final fields:Array<Field>;
     final behaviors:Array<Expr> = [];
 
     function new() {
-        final args = [];
+        final args = [{ name: 'world', type: null }];
         final refs = [];
         for (f in Context.getBuildFields()) {
             switch f.kind {
                 case FVar(t, null):
                     args.push({ name: f.name, type: t });
                 case FVar(t, e):
-                    refs.push({
-                        id: behaviors.length,
-                        name: f.name,
-                        pos: f.pos
-                    });
-                    addBehavior(e);
+                    if (f.access.contains(AStatic)) {
+                        refs.push({
+                            id: behaviors.length,
+                            name: f.name,
+                            pos: f.pos
+                        });
+                        addBehavior(e);
+                    }
                 case _:
                     Context.warning('Unhandled field kind.', f.pos);
             }
@@ -40,8 +42,8 @@ class ForestParser {
                 access: [APublic, AStatic],
                 kind: FFun({
                     args: args,
-                    params: [{ name: 'T' }],
-                    ret: macro :haxebt.BehaviorForest<T>,
+                    params: [{ name: 'E' }, { name: 'W' }],
+                    ret: macro :haxebt.BehaviorForest<E, W>,
                     expr: macro {
                         var forest = [];
                         $b{behaviors.map(e -> macro forest.push($e))};
@@ -81,10 +83,13 @@ class ForestParser {
     function addBehavior(e:Expr):Array<Expr> {
         final args = [
             macro forest,
+            macro world,
             macro $v{behaviors.length},
             macro haxebt.BehaviorNodeId.NONE,
             macro haxebt.BehaviorNodeId.NONE
         ];
+        final SIBLING:Int = 3;
+        final CHILD:Int = 4;
         inline function parsePath(e:Expr):Array<String> {
             final path = [];
             function parse(e:Expr) switch e.expr {
@@ -128,12 +133,12 @@ class ForestParser {
             pos: e.pos
         });
         if (beh.children.length > 0) {
-            args[3] = macro $v{behaviors.length}; // Set next behavior as child of this one.
+            args[CHILD] = macro $v{behaviors.length}; // Set next behavior as child of this one.
             var prev = null;
             for (child in beh.children) {
                 var siblingId = behaviors.length;
                 var next = addBehavior(child);
-                if (prev != null) prev[2] = macro $v{siblingId};
+                if (prev != null) prev[SIBLING] = macro $v{siblingId};
                 prev = next;
             }
         }

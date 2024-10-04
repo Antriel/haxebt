@@ -2,7 +2,7 @@ import haxebt.behaviors.Behavior;
 
 typedef LifeEntity = {life:Int};
 
-class DecLife extends Behavior<LifeEntity> {
+class DecLife<W:{b:String}> extends Behavior<LifeEntity, W> {
 
     final once:Bool = false;
 
@@ -16,7 +16,7 @@ class DecLife extends Behavior<LifeEntity> {
 
 }
 
-class SetLife extends Behavior<LifeEntity> {
+class SetLife<W> extends Behavior<LifeEntity, W> {
 
     final life:Int;
 
@@ -27,7 +27,7 @@ class SetLife extends Behavior<LifeEntity> {
 
 }
 
-@:behavior("composite") class CustomComposite<T> extends Behavior<T> {
+@:behavior("composite") class CustomComposite<E, W> extends Behavior<E, W> {
 
     final index:Int;
 

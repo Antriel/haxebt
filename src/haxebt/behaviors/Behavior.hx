@@ -1,26 +1,29 @@
 package haxebt.behaviors;
 
+import haxebt.BehaviorForest;
 import haxebt.BehaviorNodeId;
 
 @:autoBuild(haxebt.macros.BehaviorBuilder.build())
-abstract class Behavior<T> {
+abstract class Behavior<E, W> {
 
-    public final forest:BehaviorForest<T>;
+    public final forest:BehaviorForest<E, W>;
+    public final world:W;
     public final id:BehaviorNodeId;
     public final child:BehaviorNodeId;
     public final sibling:BehaviorNodeId;
 
-    public function new(forest:BehaviorForest<T>, id:BehaviorNodeId, sibling:BehaviorNodeId,
+    public function new(forest:BehaviorForest<E, W>, world:W, id:BehaviorNodeId, sibling:BehaviorNodeId,
             child:BehaviorNodeId) {
         this.forest = forest;
+        this.world = world;
         this.id = id;
         this.sibling = sibling;
         this.child = child;
     }
 
-    public abstract function run(storage:Map<BehaviorNodeId, Dynamic>, entity:T):BehaviorResult;
+    public abstract function run(storage:Map<BehaviorNodeId, Dynamic>, entity:E):BehaviorResult;
 
-    @:dce function runOther(b:Behavior<T>):BehaviorResult throw "Shouldn't actually get called.";
+    @:dce function runOther(b:Behavior<E, W>):BehaviorResult throw "Shouldn't actually get called.";
 
     @:dce function clearData():Void throw "Shouldn't actually get called.";
 

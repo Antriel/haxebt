@@ -3,7 +3,7 @@ package haxebt.behaviors;
 import haxebt.BehaviorNodeId;
 
 @:behavior("composite")
-class Sequence<T> extends Behavior<T> {
+class Sequence<E, W> extends Behavior<E, W> {
 
     function init():ChildData {
         return {
@@ -11,7 +11,7 @@ class Sequence<T> extends Behavior<T> {
         }
     }
 
-    function execute(data) {
+    function execute(e:E, data) {
         while (true) {
             var child = forest[data.child];
             var status = runOther(child);
@@ -41,7 +41,7 @@ typedef ChildData = {
 }
 
 @:behavior("composite")
-class Selector<T> extends Behavior<T> {
+class Selector<E, W> extends Behavior<E, W> {
 
     function init():ChildData {
         return {
@@ -73,7 +73,7 @@ class Selector<T> extends Behavior<T> {
 }
 
 @:behavior("composite")
-class Parallel<T> extends Behavior<T> {
+class Parallel<E, W> extends Behavior<E, W> {
 
     function execute() {
         var child = forest[this.child];
@@ -98,7 +98,7 @@ class Parallel<T> extends Behavior<T> {
 }
 
 @:behavior("composite")
-class RandomSelector<T> extends Behavior<T> {
+class RandomSelector<E, W> extends Behavior<E, W> {
 
     final weights:Array<Int> = null;
 

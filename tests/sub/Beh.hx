@@ -2,7 +2,7 @@ package sub;
 
 import haxebt.behaviors.Behavior;
 
-class Beh<T> extends Behavior<T> {
+class Beh<E, W> extends Behavior<E, W> {
 
     function execute() return Success;
 

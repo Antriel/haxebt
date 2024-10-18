@@ -1,7 +1,7 @@
 package haxebt.behaviors;
 
 @:behavior("decorator")
-class UntilFail<T> extends Behavior<T> {
+class UntilFail<E, W> extends Behavior<E, W> {
 
     function execute() {
         return switch runOther(forest[child]) {
@@ -13,7 +13,7 @@ class UntilFail<T> extends Behavior<T> {
 }
 
 @:behavior("decorator")
-class UntilSuccess<T> extends Behavior<T> {
+class UntilSuccess<E, W> extends Behavior<E, W> {
 
     function execute() {
         return switch runOther(forest[child]) {
@@ -25,7 +25,7 @@ class UntilSuccess<T> extends Behavior<T> {
 }
 
 @:behavior("decorator")
-class AlwaysSucceed<T> extends Behavior<T> {
+class AlwaysSucceed<E, W> extends Behavior<E, W> {
 
     function execute() {
         runOther(forest[child]);
@@ -35,7 +35,7 @@ class AlwaysSucceed<T> extends Behavior<T> {
 }
 
 @:behavior("decorator")
-class AlwaysFail<T> extends Behavior<T> {
+class AlwaysFail<E, W> extends Behavior<E, W> {
 
     function execute() {
         runOther(forest[child]);

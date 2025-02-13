@@ -156,7 +156,7 @@ class BehaviorBuilder {
                     $expr;
                 }
             }),
-            pos: pos
+            pos: haxe.macro.PositionTools.toZeroRange(pos),
         }
     }
 

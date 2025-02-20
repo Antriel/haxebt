@@ -43,3 +43,16 @@ class AlwaysFail<E, W> extends Behavior<E, W> {
     }
 
 }
+
+@:behavior("decorator")
+class Not<E, W> extends Behavior<E, W> {
+
+    function execute() {
+        return switch runOther(forest[child]) {
+            case Running: Running;
+            case Success: Failure;
+            case Failure: Success;
+        }
+    }
+
+}

@@ -206,6 +206,7 @@ class BehaviorBuilder {
                     haxebt.behaviors.Behavior.onExit(this.id, result, $i{entityArgName});
                     return result;
                 }
+            case EFunction(_): e; // Ignore local functions.
             case _: ExprTools.map(e, addDebugToReturn);
         }
     }
